@@ -1,0 +1,91 @@
+version: "3"
+services:
+  hive:
+    image: 'bitsondatadev/hive-metastore:latest'
+    ports:
+      - '9083:9083' # Metastore Thrift
+    volumes:
+      - ./hive/files/hive-site.xml:/opt/apache-hive-metastore-3.0.0-bin/conf/metastore-site.xml:ro
+    environment:
+      METASTORE_DB_HOSTNAME: mariadb
+    depends_on:
+      - mariadb
+
+  mariadb:
+    hostname: mariadb
+    image: mariadb:10.7.1
+    container_name: mariadb
+    ports:
+      - 3306:3306
+    volumes:
+      - ./database/mariadb-data:/var/lib/mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: admin
+      MYSQL_USER: admin
+      MYSQL_PASSWORD: admin
+      MYSQL_DATABASE: metastore_db
+
+  minio:
+    image: minio/minio:latest
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+    environment:
+      MINIO_ACCESS_KEY: minio_access_key
+      MINIO_SECRET_KEY: minio_secret_key
+    command: server /data --console-address ":9001"
+
+  trino-coordinator:
+    image: "trinodb/trino:367"
+    ports:
+      - '8080:8080'
+    volumes:
+      - ./trino/coordinator/etc:/etc/trino:ro
+    depends_on:
+      - hive
+  superset:
+    build: ./superset
+    ports:
+      - "8088:8088"
+    volumes:
+      - superset-data:/app/superset_home
+
+  # docker compose to deploy AirFlow
+  postgres:
+    image: postgres:13.1
+    env_file:
+      - ./AirFlow/.env
+    environment:
+      - POSTGRES_USER=airflow
+      - POSTGRES_PASSWORD=airflow
+      - POSTGRES_DB=airflow
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres:/data/postgres
+      
+  web:
+    build: ./AirFlow/
+    image: piyush/airflow-2.1.0
+    env_file:
+      - ./AirFlow/.env
+    ports:
+    - "9090:8080"
+    depends_on:
+    - postgres
+    volumes:
+      - ./AirFlow/dags:/opt/airflow/dags
+
+
+
+volumes:
+  minio-data:
+    driver: local
+  postgres-data:
+    driver: local
+  superset-data:
+    driver: local
+  postgres:
+
